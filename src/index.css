@@ -1,0 +1,59 @@
+@import "../styles/globals.css";
+
+@layer base {
+  :root {
+    @apply font-sans;
+  }
+}
+
+.prose {
+  @apply text-base leading-7;
+}
+
+.prose h1 {
+  @apply text-4xl font-bold mt-8 mb-4 tracking-tight;
+}
+
+.prose h2 {
+  @apply text-3xl font-semibold mt-8 mb-4 tracking-tight;
+}
+
+.prose h3 {
+  @apply text-2xl font-semibold mt-6 mb-3 tracking-tight;
+}
+
+.prose p {
+  @apply my-4;
+}
+
+.prose a {
+  @apply text-blue-600 no-underline hover:underline;
+}
+
+.prose ul {
+  @apply list-disc pl-6 my-4;
+}
+
+.prose ol {
+  @apply list-decimal pl-6 my-4;
+}
+
+.prose li {
+  @apply my-1;
+}
+
+.prose blockquote {
+  @apply border-l-4 border-gray-300 pl-4 my-4 italic;
+}
+
+.prose code {
+  @apply bg-slate-100 px-1.5 py-0.5 rounded text-sm font-mono;
+}
+
+.prose pre {
+  @apply bg-slate-100 p-4 rounded-lg my-4 overflow-auto;
+}
+
+.prose pre code {
+  @apply bg-transparent p-0 text-sm;
+}
