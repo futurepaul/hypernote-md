@@ -103,7 +103,7 @@ export class RelayHandler {
     }
   }
 
-  async callHypernoteFunction(functionName: string, args: any[]) {
+  async callHypernoteFunction(functionName: string, parameters: Record<string, any>) {
     const toolRequest = {
       kind: 5910,
       created_at: Math.floor(Date.now() / 1000),
@@ -113,8 +113,7 @@ export class RelayHandler {
       ],
       content: JSON.stringify({
         name: functionName,
-        // DON'T CHANGE THIS IT'S A TEST
-        parameters: { "a": 42 },
+        parameters,
         timestamp: Date.now() / 1000
       }),
     };

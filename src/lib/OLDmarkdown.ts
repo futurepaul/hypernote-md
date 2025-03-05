@@ -29,14 +29,27 @@ const md = new MarkdownIt({
 // First apply the directive plugin
 md.use(MarkdownItDirective).use((md: any) => {
   md.inlineDirectives["button"] = function (params: any) {
-    const { state, content, attrs } = params;
-    const token = state.push("html_inline", "", 0);
-    const variant = (attrs?.variant || "default") as ButtonVariant;
-    const size = (attrs?.size || "default") as ButtonSize;
+    const { state, content, info } = params;
+    console.log("Directive params:", { content, info });
 
-    // Store all attributes as a data attribute
-    const attrsJson = JSON.stringify(attrs || {});
-    token.content = `<button class="button-${variant} button-${size}" data-attrs='${attrsJson}'>${content}</button>`;
+    // Parse the info string which contains our attributes
+    const attrs: Record<string, string> = {};
+    if (info) {
+      // Match either:
+      // 1. key="value" or key='value'
+      // 2. key={...} for JSON objects
+      // 3. key=value for bare values
+      const matches = info.matchAll(/(\w+)=(?:["']([^"']+)["']|\{([^}]+)\}|([^\s}]+))/g);
+      for (const match of matches) {
+        const [_, key, quotedValue, jsonValue, bareValue] = match;
+        attrs[key] = quotedValue || jsonValue || bareValue;
+      }
+    }
+
+    // Create a placeholder token that we'll replace with React later
+    const token = state.push("react_button", "", 0);
+    token.content = content;
+    token.attrs = attrs;
   };
 });
 
@@ -62,55 +75,43 @@ const processInlineContent = (token: any, relayHandler: RelayHandler): ReactNode
         const content = token.children[i + 1].content;
         result.push(createElement("a", { key: i, href }, content));
         i += 2; // Skip the link content and close tokens
-      } else if (child.type === "html_inline") {
-        // If we have text buffered, add it before the HTML
+      } else if (child.type === "react_button") {
+        // If we have text buffered, add it before the button
         if (textBuffer) {
           result.push(textBuffer);
           textBuffer = "";
         }
-        // Parse the button HTML and create a React button
-        const match = child.content.match(
-          /button-(\w+).*button-(\w+)".*data-attrs='(.*?)'>(.*?)<\/button>/
-        );
-        if (match) {
-          const [_, variant, size, attrsJson, content] = match;
-          const attrs = JSON.parse(attrsJson);
 
-          // Format the attrs for display
-          const formattedAttrs = Object.entries(attrs)
-            .map(([key, value]) => `${key}="${value}"`)
-            .join(" ");
+        const variant = (child.attrs?.variant || "default") as ButtonVariant;
+        const size = (child.attrs?.size || "default") as ButtonSize;
+        const fn = child.attrs?.fn;
+        const args = child.attrs?.args ? JSON.parse(child.attrs.args) : {};
 
-          result.push(
-            createElement(
-              Button,
-              {
-                key: i,
-                variant: variant as ButtonVariant,
-                size: size as ButtonSize,
-                onClick: async () => {
+        result.push(
+          createElement(
+            Button,
+            {
+              key: i,
+              variant,
+              size,
+              onClick: async () => {
+                if (!fn) {
+                  toast.error("No function provided");
+                  return;
+                }
 
-                  const fn = attrs.fn;
-                  const args = attrs.args;
-
-                  if (!fn || !args) {
-                    toast.error("No function or arguments provided");
-                    return;
-                  }
-
-                  toast.success(`Event:\n{${formattedAttrs}}`);
-
-                  try {
-                    await relayHandler.callHypernoteFunction(fn, []);
-                  } catch (error) {
-                    console.error("Error publishing event:", error);
-                  }
-                },
+                try {
+                  toast.success(`Calling ${fn} with args: ${JSON.stringify(args)}`);
+                  await relayHandler.callHypernoteFunction(fn, args);
+                } catch (error) {
+                  console.error("Error publishing event:", error);
+                  toast.error(`Error calling ${fn}: ${error}`);
+                }
               },
-              content
-            )
-          );
-        }
+            },
+            child.content
+          )
+        );
       }
     }
 

@@ -1,7 +1,7 @@
 import "./index.css";
 import { Card, CardContent } from "@/components/ui/card";
 import { useState, useEffect } from "react";
-import { renderMarkdownToReact } from "@/lib/markdown";
+import { renderMarkdownToReact } from "@/lib/remark";
 import { Toaster } from "sonner";
 import { useNostrStore } from "./stores/nostrStore";
 
@@ -9,7 +9,7 @@ const initialMarkdown = `# Hello World
 
 This is a paragraph with a [link](https://example.com).
 
-:button[Click me]{fn="plusone" args="baz"}
+:button[Click me]{fn="plusone" args='{"a": 1}'}
 
 ## Second heading
 
@@ -30,7 +30,7 @@ export function App() {
 
   useEffect(() => {
     if (relayHandler) {
-      setRenderedContent(renderMarkdownToReact(markdown, relayHandler));
+      renderMarkdownToReact(markdown, relayHandler).then(setRenderedContent);
     }
   }, [markdown, relayHandler]);
 
