@@ -8,14 +8,11 @@
 import { createRoot } from "react-dom/client";
 import { StrictMode } from "react";
 import { App } from "./App";
-import { NdkProvider } from "./contexts/NdkContext";
 
 const elem = document.getElementById("root")!;
 const app = (
   <StrictMode>
-    <NdkProvider>
-      <App />
-    </NdkProvider>
+    <App />
   </StrictMode>
 );
 

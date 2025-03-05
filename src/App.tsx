@@ -3,13 +3,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useState, useEffect } from "react";
 import { renderMarkdownToReact } from "@/lib/markdown";
 import { Toaster } from "sonner";
-import { useNdk } from "./contexts/NdkContext";
+import { useNostrStore } from "./stores/nostrStore";
 
 const initialMarkdown = `# Hello World
 
 This is a paragraph with a [link](https://example.com).
 
-:button[Click me]{test="test" bar="baz"}
+:button[Click me]{fn="plusone" args="baz"}
 
 ## Second heading
 
@@ -19,16 +19,25 @@ export function App() {
   const [markdown, setMarkdown] = useState(initialMarkdown);
   const [renderedContent, setRenderedContent] = useState<React.ReactNode[]>([]);
 
-  const ndk = useNdk();
+  const { relayHandler, initialize, cleanup, logs } = useNostrStore();
 
   useEffect(() => {
-    setRenderedContent(renderMarkdownToReact(markdown, ndk));
-  }, [markdown, ndk]);
+    initialize();
+    return () => {
+      cleanup();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (relayHandler) {
+      setRenderedContent(renderMarkdownToReact(markdown, relayHandler));
+    }
+  }, [markdown, relayHandler]);
 
   return (
     <>
-      <div className="p-4 h-screen">
-        <div className="grid grid-cols-2 gap-4 h-full">
+      <div className="p-4 h-screen flex flex-col">
+        <div className="grid grid-cols-2 gap-4 flex-1">
           {/* Markdown Input */}
           <Card className="h-full">
             <CardContent className="p-4 h-full">
@@ -50,6 +59,19 @@ export function App() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Log Display */}
+        <Card className="mt-4 bg-black">
+          <CardContent className="p-4">
+            <div className="text-white font-mono text-sm overflow-auto min-h-32 max-h-64">
+              {logs.map((log, index) => (
+                <div key={index} className="py-1">
+                  {log}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
       <Toaster />
     </>

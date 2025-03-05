@@ -1,21 +1,14 @@
 import MarkdownIt from "markdown-it";
-import type { Token } from "markdown-it";
 import MarkdownItDirective from "markdown-it-directive";
-import { createElement, Fragment } from "react";
+import { createElement } from "react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import type { VariantProps } from "class-variance-authority";
 import { toast } from "sonner";
-import NDK, { NDKEvent } from "@nostr-dev-kit/ndk";
+import type { RelayHandler } from "@/stores/nostrStore";
 
 type ButtonVariant = VariantProps<typeof Button>["variant"];
 type ButtonSize = VariantProps<typeof Button>["size"];
-
-interface DirectiveToken extends Omit<Token, "attrs"> {
-  name: string;
-  content: string;
-  attrs?: Record<string, string>;
-}
 
 interface DirectiveState {
   state: any;
@@ -48,7 +41,7 @@ md.use(MarkdownItDirective).use((md: any) => {
 });
 
 // Helper function to process inline tokens
-const processInlineContent = (token: any, ndk: NDK): ReactNode[] => {
+const processInlineContent = (token: any, relayHandler: RelayHandler): ReactNode[] => {
   const result: ReactNode[] = [];
 
   if (token.children) {
@@ -96,15 +89,19 @@ const processInlineContent = (token: any, ndk: NDK): ReactNode[] => {
                 variant: variant as ButtonVariant,
                 size: size as ButtonSize,
                 onClick: async () => {
+
+                  const fn = attrs.fn;
+                  const args = attrs.args;
+
+                  if (!fn || !args) {
+                    toast.error("No function or arguments provided");
+                    return;
+                  }
+
                   toast.success(`Event:\n{${formattedAttrs}}`);
 
                   try {
-                    const ndkEvent = new NDKEvent(ndk);
-                    ndkEvent.kind = 30078;
-                    ndkEvent.tags = [["d", "HYPERNOTE_TEST"]];
-                    ndkEvent.content = `Button clicked with attributes: ${formattedAttrs}`;
-                    await ndkEvent.publish();
-                    console.log("Signed event:", ndkEvent);
+                    await relayHandler.callHypernoteFunction(fn, []);
                   } catch (error) {
                     console.error("Error publishing event:", error);
                   }
@@ -126,17 +123,17 @@ const processInlineContent = (token: any, ndk: NDK): ReactNode[] => {
   return result;
 };
 
-export const renderMarkdownToReact = (src: string, ndk: NDK): ReactNode[] => {
+export const renderMarkdownToReact = (src: string, relayHandler: RelayHandler): ReactNode[] => {
   const tokens = md.parse(src, {});
   let result: ReactNode[] = [];
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
 
-    switch (token.type) {
+    switch (token?.type) {
       case "paragraph_open":
         const inlineToken = tokens[i + 1];
-        const paragraphContent = processInlineContent(inlineToken, ndk);
+        const paragraphContent = processInlineContent(inlineToken, relayHandler);
         result.push(createElement("p", { key: i }, paragraphContent));
         i += 2; // Skip content and closing tokens
         break;
