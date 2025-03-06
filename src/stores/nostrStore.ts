@@ -120,6 +120,16 @@ export class RelayHandler {
     await this.publishEvent(toolRequest);
   }
 
+  async publish(kind: number, tags: string[][], content: string) {
+    const event = {
+      kind,
+      created_at: Math.floor(Date.now() / 1000),
+      tags,
+      content,
+    };
+    await this.publishEvent(event);
+  }
+
   subscribeToEvent(eventId: string, onEvent: (event: any) => void) {
     this.addLog(`Setting up subscription for event ID: ${eventId}`);
     const sub = this.pool.subscribeMany(
@@ -177,8 +187,12 @@ interface NostrStore {
   cleanup: () => void;
 }
 
-const RELAY_URLS = ['wss://relay.nostr.net', 'wss://relay.damus.io', 'wss://ithurtswhenip.ee', 'wss://relay.snort.social', 'wss://relay.nostr.band']
-
+const RELAY_URLS = [
+  'wss://relay.nostr.net',
+  // 'wss://relay.damus.io',
+  // 'wss://relay.snort.social',
+  // 'wss://relay.nostr.band'
+]
 
 export const useNostrStore = create<NostrStore>((set) => ({
   relayHandler: null,

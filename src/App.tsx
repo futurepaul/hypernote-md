@@ -5,15 +5,35 @@ import { renderMarkdownToReact } from "@/lib/remark";
 import { Toaster } from "sonner";
 import { useNostrStore } from "./stores/nostrStore";
 
-const initialMarkdown = `# Hello World
+// const initialMarkdown = `# Hello World
 
-This is a paragraph with a [link](https://example.com).
+// This is a paragraph with a [link](https://example.com).
 
-:button[Click me]{fn="plusone" args='{"a": 1}'}
+// :button[Click me]{fn="plusone" args='{"a": 1}'}
 
-## Second heading
+// :::query{fn="fetchsomethingwithnostr" args="TODO"}
+// This is a query result: {result.content}
+// :::
 
-Here's another button: :button[Secondary Button]{variant="secondary" size="lg"}`;
+// ## Second heading
+
+// Here's another button: :button[Secondary Button]{variant="secondary" size="lg"}`;
+
+const initialMarkdown = `
+# Hypernote
+
+Hello, nerds.
+
+:::query{#q fn="fetchsomethingwithnostr" args="TODO"}
+## {result.content}
+:::
+
+:button[Click me]{fn="plusone" args='{"a": 1}' target="#q"}
+
+## NIP-78
+
+:button[Publish state]{kind="30078" d="test" content="42"}
+`;
 
 export function App() {
   const [markdown, setMarkdown] = useState(initialMarkdown);

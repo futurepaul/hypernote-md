@@ -3,6 +3,7 @@ import { processMarkdown, renderMarkdownToReact } from "./remark";
 import { RelayHandler } from "@/stores/nostrStore";
 import { Button } from "@/components/ui/button";
 import type { Paragraph } from "mdast";
+import { QueryComponent } from "@/components/markdown/QueryComponent";
 
 // Mock RelayHandler for testing
 const mockRelayHandler = {
@@ -115,5 +116,40 @@ Another paragraph with a [link](https://example.com).`;
     expect(button.type).toBe(Button);
     expect(button.props).toHaveProperty("variant", "default");
     expect(button.props).toHaveProperty("onClick");
+  });
+
+  test("processes query directive", async () => {
+    const input = `:::query{fetchsomethingwithnostr(TODO)}
+normal text {result.content} normal text
+:::`;
+    const result = await processMarkdown(input);
+    
+    const queryNode = result.children[0] as any;
+    expect(queryNode).toHaveProperty("type", "containerDirective");
+    expect(queryNode).toHaveProperty("name", "query");
+    expect(queryNode.attributes).toHaveProperty("fn", "fetchsomethingwithnostr");
+    expect(queryNode.attributes).toHaveProperty("args", "TODO");
+    
+    // Check that the content is preserved
+    const paragraph = queryNode.children[0] as any;
+    expect(paragraph).toHaveProperty("type", "paragraph");
+    expect(paragraph.children[0]).toHaveProperty("value", "normal text ");
+    expect(paragraph.children[1]).toHaveProperty("value", "{result.content}");
+    expect(paragraph.children[2]).toHaveProperty("value", " normal text");
+  });
+
+  test("renders query directive", async () => {
+    const input = `:::query{fetchsomethingwithnostr(TODO)}
+normal text {result.content} normal text
+:::`;
+    const result = await renderMarkdownToReact(input, mockRelayHandler);
+    
+    expect(result).toHaveLength(1); // One QueryComponent
+    const queryComponent = result[0] as any;
+    expect(queryComponent.type).toBe(QueryComponent);
+    expect(queryComponent.props).toHaveProperty("fn", "fetchsomethingwithnostr");
+    expect(queryComponent.props).toHaveProperty("args", "TODO");
+    expect(queryComponent.props).toHaveProperty("relayHandler", mockRelayHandler);
+    expect(queryComponent.props.children).toContain("normal text {result.content} normal text");
   });
 }); 
