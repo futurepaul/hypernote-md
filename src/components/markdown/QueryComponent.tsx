@@ -8,9 +8,11 @@ interface QueryComponentProps {
   d: string;
   children: React.ReactNode;
   relayHandler: IRelayHandler;
+  "data-target"?: string;
+  "data-d"?: string;
 }
 
-export function QueryComponent({ id, kind, d, children, relayHandler }: QueryComponentProps) {
+export function QueryComponent({ id, kind, d, children, relayHandler, "data-target": dataTarget, "data-d": dataD }: QueryComponentProps) {
   const [error, setError] = useState<string | null>(null);
   const { queryResponses, setQueryResponse } = useNostrStore();
 
@@ -94,5 +96,5 @@ export function QueryComponent({ id, kind, d, children, relayHandler }: QueryCom
     return child;
   });
 
-  return <div className="prose dark:prose-invert">{processedChildren}</div>;
+  return <div className="prose dark:prose-invert" data-target={dataTarget} data-d={dataD}>{processedChildren}</div>;
 } 

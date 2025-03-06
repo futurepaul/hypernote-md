@@ -73,6 +73,7 @@ function remarkQueries() {
         data.hProperties = {
           className: "prose dark:prose-invert",
           id,
+          "data-target": id || undefined,
           kind: node.attributes?.kind || "",
           d: node.attributes?.d || "",
         };
@@ -172,7 +173,7 @@ function processNode(node: any, relayHandler: RelayHandler, index: number): Reac
                     // 4. Consider using a schema validation library
                     // 5. Add proper documentation for supported field types and formats
                     toast.success(`Calling ${fn} with args: ${JSON.stringify(args)}`);
-                    await relayHandler.callHypernoteFunction(fn, args);
+                    await relayHandler.callHypernoteFunction(fn, args, target);
                   } catch (error) {
                     console.error("Error publishing event:", error);
                     toast.error(`Error calling ${fn}: ${error}`);
@@ -238,6 +239,8 @@ function processNode(node: any, relayHandler: RelayHandler, index: number): Reac
               d,
               relayHandler,
               children,
+              "data-target": id ? `#${id}` : "",
+              "data-d": d || "",
             }
           );
         }

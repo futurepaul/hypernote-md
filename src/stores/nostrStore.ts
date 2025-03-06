@@ -4,9 +4,10 @@ import {
   getPublicKey,
 } from "nostr-tools/pure";
 import { SimplePool } from "nostr-tools/pool";
+import { toast } from "sonner";
 
 export type IRelayHandler = {
-  callHypernoteFunction: (fn: string, args: any) => Promise<void>;
+  callHypernoteFunction: (fn: string, args: any, target?: string) => Promise<void>;
   publish: (kind: number, tags: string[][], content: string) => Promise<void>;
   subscribeToQuery: (id: string, kind: number, d: string, onEvent: (event: any) => void) => any;
   cleanup: () => void;
@@ -80,10 +81,10 @@ export class RelayHandler implements IRelayHandler {
     );
   }
 
-  async publishEvent(event: any): Promise<void> {
+  async publishEvent(event: any, target?: string): Promise<void> {
     try {
       const signedEvent = finalizeEvent(event, this.privateKey);
-      this.addLog(`Event finalized(kind: ${event.kind}), id: ${event.id}`);
+      this.addLog(`Event finalized(kind: ${event.kind}), id: ${signedEvent.id}`);
       
       // Set up subscription BEFORE publishing
       this.addLog(`Setting up subscription for event ID: ${signedEvent.id}`);
@@ -94,7 +95,7 @@ export class RelayHandler implements IRelayHandler {
         } catch (e) {
           this.addLog(`Failed to parse event content: ${e}`);
         }
-      });
+      }, target);
 
       // Log connection status
       this.relayUrls.forEach(url => {
@@ -103,15 +104,16 @@ export class RelayHandler implements IRelayHandler {
       });
 
       // Now publish the event
+      this.addLog(`Attempting to publish event to ${this.relayUrls.length} relays...`);
       await Promise.any(this.pool.publish(this.relayUrls, signedEvent));
-      this.addLog(`Event published(kind: ${event.kind}), id: ${event.id}`);
+      this.addLog(`Event published successfully(kind: ${event.kind}), id: ${signedEvent.id}`);
     } catch (error) {
       this.addLog(`Failed to publish event: ${error}`);
       throw error;
     }
   }
 
-  async callHypernoteFunction(functionName: string, parameters: Record<string, any>) {
+  async callHypernoteFunction(functionName: string, parameters: Record<string, any>, target?: string) {
     const toolRequest = {
       kind: 5910,
       created_at: Math.floor(Date.now() / 1000),
@@ -125,10 +127,18 @@ export class RelayHandler implements IRelayHandler {
         timestamp: Date.now() / 1000
       }),
     };
-    await this.publishEvent(toolRequest);
+
+    // Finalize the event to get its ID
+    const signedEvent = finalizeEvent(toolRequest, this.privateKey);
+
+    await this.publishEvent(signedEvent, target);
   }
 
   async publish(kind: number, tags: string[][], content: string) {
+    this.addLog(`Publishing event kind ${kind}`);
+    this.addLog(`Tags: ${JSON.stringify(tags)}`);
+    this.addLog(`Content: ${content}`);
+    
     const event = {
       kind,
       created_at: Math.floor(Date.now() / 1000),
@@ -138,7 +148,7 @@ export class RelayHandler implements IRelayHandler {
     await this.publishEvent(event);
   }
 
-  subscribeToEvent(eventId: string, onEvent: (event: any) => void) {
+  subscribeToEvent(eventId: string, onEvent: (event: any) => void, target?: string) {
     this.addLog(`Setting up subscription for event ID: ${eventId}`);
     const sub = this.pool.subscribeMany(
       this.relayUrls,
@@ -150,11 +160,60 @@ export class RelayHandler implements IRelayHandler {
         },
       ],
       {
-        onevent: (event) => {
+        onevent: async (event) => {
           this.addLog(`Event received(kind: ${event.kind}), id: ${event.id}`);
           this.addLog(`Event content: ${event.content}`);
           this.addLog(`Event tags: ${JSON.stringify(event.tags)}`);
           console.log(event);
+
+          // Add toast notifications based on event kind
+          switch (event.kind) {
+            case 5910:
+              console.log('Tool execution event:', event);
+              toast.info('Tool execution event received');
+              break;
+            case 7000:
+              console.log('Status event:', event);
+              toast.info('Status event received');
+              break;
+            case 6910:
+              console.log('Result event:', event);
+              toast.success('Result event received');
+              
+              // Handle result event
+              try {
+                this.addLog(`Processing result event: ${event.content}`);
+                const content = JSON.parse(event.content);
+                if (Array.isArray(content.content) && content.content.length > 0 && content.content[0].text) {
+                  const resultValue = content.content[0].text;
+                  this.addLog(`Result value: ${resultValue}`);
+                  
+                  // Look up the query element's d tag using the target
+                  console.warn("QUERYING FOR TARGET", target);
+                  const queryElement = document.querySelector(`[data-target="${target}"]`);
+                  console.log(queryElement);
+                  if (queryElement) {
+                    const dTag = queryElement.getAttribute('data-d');
+                    this.addLog(`D tag: ${dTag}`);
+                    if (dTag) {
+                      await this.publish(30078, [["d", dTag]], resultValue);
+                      this.addLog(`Published result ${resultValue} with d tag "${dTag}"`);
+                    } else {
+                      this.addLog(`No d tag found for target ${target}`);
+                    }
+                  } else {
+                    this.addLog(`No query element found for target ${target}`);
+                  }
+                }
+              } catch (error) {
+                this.addLog(`Error processing result event: ${error}`);
+              }
+              break;
+            default:
+              console.log('Unknown event kind:', event);
+              toast.info(`Event kind ${event.kind} received`);
+          }
+
           onEvent(event);
         },
         oneose: () => {

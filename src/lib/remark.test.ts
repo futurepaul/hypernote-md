@@ -199,6 +199,25 @@ Another paragraph with a [link](https://example.com).`;
     expect(children[0].props.children).toEqual(["{q.content}"]);
   });
 
+  test("processes query directive without ID", async () => {
+    const input = `:::query{kind="30078" d="test"}
+{q.content}
+:::`;
+    const result = await processMarkdown(input);
+    
+    const queryNode = result.children[0] as any;
+    expect(queryNode).toHaveProperty("type", "containerDirective");
+    expect(queryNode).toHaveProperty("name", "query");
+    expect(queryNode.attributes).toHaveProperty("id", ""); // Should have empty string as ID
+    expect(queryNode.attributes).toHaveProperty("kind", "30078");
+    expect(queryNode.attributes).toHaveProperty("d", "test");
+    
+    // Check that the content is preserved
+    const paragraph = queryNode.children[0] as any;
+    expect(paragraph).toHaveProperty("type", "paragraph");
+    expect(paragraph.children[0]).toHaveProperty("value", "{q.content}");
+  });
+
   test("processes multiple query directives with different IDs", async () => {
     // Test that multiple query directives are processed correctly as siblings
     // Each directive should have its own ID and content
@@ -286,5 +305,25 @@ Another paragraph with a [link](https://example.com).`;
     
     // Verify the slot value
     expect(getSlotValue(slotId)).toBe("42");
+  });
+
+  test("renders query directive with data attributes", async () => {
+    const input = `:::query{#q kind="30078" d="test"}
+{q.content}
+:::`;
+    const result = await renderMarkdownToReact(input, mockRelayHandler);
+    
+    expect(result).toHaveLength(1); // One QueryComponent
+    const queryComponent = result[0] as any;
+    expect(queryComponent.type).toBe(QueryComponent);
+    expect(queryComponent.props).toHaveProperty("id", "q");
+    expect(queryComponent.props).toHaveProperty("data-target", "#q");
+    expect(queryComponent.props).toHaveProperty("data-d", "test");
+    
+    // Check that the children contain the correct structure
+    const children = queryComponent.props.children;
+    expect(children).toHaveLength(1);
+    expect(children[0].type).toBe("p");
+    expect(children[0].props.children).toEqual(["{q.content}"]);
   });
 }); 
