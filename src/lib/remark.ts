@@ -1,17 +1,19 @@
+import path from "path";
+import { createElement, Fragment } from "react";
+import type { ReactNode } from "react";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkDirective from "remark-directive";
 import { visit } from "unist-util-visit";
 import type { Root } from "mdast";
-import { createElement } from "react";
-import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { QueryComponent } from "@/components/markdown/QueryComponent";
 import type { VariantProps } from "class-variance-authority";
 import { toast } from "sonner";
-import type { RelayHandler } from "@/stores/nostrStore";
+import type { RelayHandler } from "@/lib/relayHandler";
 import { useNostrStore } from "@/stores/nostrStore";
 import { v4 as uuidv4 } from 'uuid';
+import React from "react";
 
 type ButtonVariant = VariantProps<typeof Button>["variant"];
 type ButtonSize = VariantProps<typeof Button>["size"];
@@ -258,13 +260,7 @@ function processNode(node: any, relayHandler: RelayHandler, index: number): Reac
 
 export async function renderMarkdownToReact(content: string, relayHandler: RelayHandler): Promise<ReactNode[]> {
   try {
-    const processor = unified()
-      .use(remarkParse)
-      .use(remarkDirective)
-      .use(remarkQueries)
-      .use(remarkButtons);
-
-    const tree = await processor.parse(content);
+    const tree = await processMarkdown(content);
     return ((tree as any).children || []).map((node: any, index: number) => 
       processNode(node, relayHandler, index)
     );
@@ -276,7 +272,6 @@ export async function renderMarkdownToReact(content: string, relayHandler: Relay
 
 export async function processMarkdown(content: string): Promise<Root> {
   try {
-    console.log("Processing markdown:", content);
     const processor = unified()
       .use(remarkParse)
       .use(remarkDirective)

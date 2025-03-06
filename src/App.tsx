@@ -4,8 +4,17 @@ import { useState, useEffect } from "react";
 import { renderMarkdownToReact } from "@/lib/remark";
 import { Toaster } from "sonner";
 import { useNostrStore } from "./stores/nostrStore";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-const initialMarkdown = `# Hypernote
+const TEMPLATES = {
+  blank: "",
+  counter: `# Hypernote
 
 Hello, nerds.
 
@@ -20,10 +29,26 @@ Hello, nerds.
 ## NIP-78
 
 :button[Publish 42]{kind="30078" d="test" content="42"}
-`;
+`,
+  prompt: `
+
+  
+  `,
+  feed: `# Hypernote
+
+:::query{#q kind="3" authors="0d6c8388dcb049b8dd4fc8d3d8c3bb93de3da90ba828e4f09c8ad0f346488a33" limit="10"}
+
+# {q.content}
+
+:::
+  `,
+} as const;
+
+type TemplateKey = keyof typeof TEMPLATES;
 
 export function App() {
-  const [markdown, setMarkdown] = useState(initialMarkdown);
+  const [markdown, setMarkdown] = useState<string>(TEMPLATES.blank);
+  const [template, setTemplate] = useState<TemplateKey>("blank");
   const [renderedContent, setRenderedContent] = useState<React.ReactNode[]>([]);
 
   const { relayHandler, initialize, cleanup, logs } = useNostrStore();
@@ -44,6 +69,25 @@ export function App() {
   return (
     <>
       <div className="p-4 h-screen flex flex-col">
+        <div className="mb-4">
+          <Select
+            value={template}
+            onValueChange={(value: TemplateKey) => {
+              setTemplate(value);
+              setMarkdown(TEMPLATES[value]);
+            }}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Select a template" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="blank">Blank</SelectItem>
+              <SelectItem value="counter">Counter</SelectItem>
+              <SelectItem value="feed">Feed</SelectItem>
+              {/* <SelectItem value="prompt">Prompt</SelectItem> */}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="grid grid-cols-2 gap-4 flex-1">
           {/* Markdown Input */}
           <Card className="h-full">
