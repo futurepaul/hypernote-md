@@ -20,19 +20,21 @@ import { useNostrStore } from "./stores/nostrStore";
 // Here's another button: :button[Secondary Button]{variant="secondary" size="lg"}`;
 
 const initialMarkdown = `
+
 # Hypernote
 
 Hello, nerds.
 
-:::query{#q fn="fetchsomethingwithnostr" args="TODO"}
-## {result.content}
-:::
+:::query{#q kind="30078" d="test"}
+# {q.content}
 
-:button[Click me]{fn="plusone" args='{"a": 1}' target="#q"}
+:button[Click me]{fn="plusone" args='{"a": {q.content}}' target="#q"}
+:::
 
 ## NIP-78
 
 :button[Publish state]{kind="30078" d="test" content="42"}
+
 `;
 
 export function App() {

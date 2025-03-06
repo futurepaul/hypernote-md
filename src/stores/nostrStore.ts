@@ -5,7 +5,14 @@ import {
 } from "nostr-tools/pure";
 import { SimplePool } from "nostr-tools/pool";
 
-export class RelayHandler {
+export type IRelayHandler = {
+  callHypernoteFunction: (fn: string, args: any) => Promise<void>;
+  publish: (kind: number, tags: string[][], content: string) => Promise<void>;
+  subscribeToQuery: (id: string, kind: number, d: string, onEvent: (event: any) => void) => any;
+  cleanup: () => void;
+};
+
+export class RelayHandler implements IRelayHandler {
   private pool: SimplePool;
   private relayUrls: string[];
   private subscriptions: any[] = [];
@@ -13,6 +20,7 @@ export class RelayHandler {
   private backgroundSub?: any;
   public privateKey: Uint8Array;
   private addLog: (message: string) => void;
+  private querySubscriptions: Map<string, any> = new Map();
 
   constructor(
     relayUrls: string[],
@@ -145,6 +153,8 @@ export class RelayHandler {
         onevent: (event) => {
           this.addLog(`Event received(kind: ${event.kind}), id: ${event.id}`);
           this.addLog(`Event content: ${event.content}`);
+          this.addLog(`Event tags: ${JSON.stringify(event.tags)}`);
+          console.log(event);
           onEvent(event);
         },
         oneose: () => {
@@ -160,6 +170,43 @@ export class RelayHandler {
     return sub;
   }
 
+  subscribeToQuery(id: string, kind: number, d: string, onEvent: (event: any) => void) {
+    this.addLog(`Setting up query subscription for ID: ${id}, kind: ${kind}, d: ${d}`);
+    
+    // Close existing subscription if any
+    if (this.querySubscriptions.has(id)) {
+      this.querySubscriptions.get(id)?.close();
+      this.querySubscriptions.delete(id);
+    }
+
+    const sub = this.pool.subscribeMany(
+      this.relayUrls,
+      [
+        {
+          kinds: [kind],
+          "#d": [d],
+        },
+      ],
+      {
+        onevent: (event) => {
+          this.addLog(`Query event received(kind: ${event.kind}), id: ${event.id}`);
+          this.addLog(`Event content: ${event.content}`);
+          onEvent(event);
+        },
+        oneose: () => {
+          this.addLog(`Query subscription ${id} reached end of stored events`);
+        },
+        onclose: (reason) => {
+          this.addLog(`Query subscription ${id} closed: ${reason}`);
+        },
+      }
+    );
+
+    this.querySubscriptions.set(id, sub);
+    this.addLog(`Query subscription added. Active query subscriptions: ${this.querySubscriptions.size}`);
+    return sub;
+  }
+
   cleanup() {
     if (this.reconnectInterval) {
       clearInterval(this.reconnectInterval);
@@ -168,7 +215,9 @@ export class RelayHandler {
       this.backgroundSub.close();
     }
     this.subscriptions.forEach((sub) => sub.close());
+    this.querySubscriptions.forEach((sub) => sub.close());
     this.subscriptions = [];
+    this.querySubscriptions.clear();
     this.pool.close(this.relayUrls);
   }
 
@@ -185,6 +234,11 @@ interface NostrStore {
   addLog: (message: string) => void;
   initialize: () => void;
   cleanup: () => void;
+  queryResponses: Record<string, any>;
+  setQueryResponse: (id: string, response: any) => void;
+  slots: Record<string, { queryId: string; field: string; value: any }>;
+  registerSlot: (slotId: string, queryId: string, field: string) => void;
+  getSlotValue: (slotId: string) => any;
 }
 
 const RELAY_URLS = [
@@ -194,11 +248,56 @@ const RELAY_URLS = [
   // 'wss://relay.nostr.band'
 ]
 
-export const useNostrStore = create<NostrStore>((set) => ({
+export const useNostrStore = create<NostrStore>((set, get) => ({
   relayHandler: null,
   privateKey: null,
   publicKey: null,
   logs: [],
+  queryResponses: {},
+  slots: {},
+  setQueryResponse: (id: string, response: any) => {
+    set((state) => {
+      // Update query response
+      const newQueryResponses = {
+        ...state.queryResponses,
+        [id]: response,
+      };
+
+      // Update all slots that depend on this query
+      const newSlots = { ...state.slots };
+      Object.entries(newSlots).forEach(([slotId, slot]) => {
+        if (slot.queryId === id) {
+          newSlots[slotId] = {
+            ...slot,
+            value: response[slot.field],
+          };
+        }
+      });
+
+      return {
+        queryResponses: newQueryResponses,
+        slots: newSlots,
+      };
+    });
+  },
+  registerSlot: (slotId: string, queryId: string, field: string) => {
+    set((state) => {
+      const queryResponse = state.queryResponses[queryId];
+      return {
+        slots: {
+          ...state.slots,
+          [slotId]: {
+            queryId,
+            field,
+            value: queryResponse?.[field],
+          },
+        },
+      };
+    });
+  },
+  getSlotValue: (slotId: string) => {
+    return get().slots[slotId]?.value;
+  },
   addLog: (message: string) => {
     const timestamp = new Date().toISOString();
     console.log(`[${timestamp}] ${message}`);

@@ -4,6 +4,7 @@ import { RelayHandler } from "@/stores/nostrStore";
 import { Button } from "@/components/ui/button";
 import type { Paragraph } from "mdast";
 import { QueryComponent } from "@/components/markdown/QueryComponent";
+import { useNostrStore } from "@/stores/nostrStore";
 
 // Mock RelayHandler for testing
 const mockRelayHandler = {
@@ -119,37 +120,171 @@ Another paragraph with a [link](https://example.com).`;
   });
 
   test("processes query directive", async () => {
-    const input = `:::query{fetchsomethingwithnostr(TODO)}
-normal text {result.content} normal text
+    const input = `:::query{#q kind="30078" d="test"}
+{q.content}
 :::`;
     const result = await processMarkdown(input);
     
     const queryNode = result.children[0] as any;
     expect(queryNode).toHaveProperty("type", "containerDirective");
     expect(queryNode).toHaveProperty("name", "query");
-    expect(queryNode.attributes).toHaveProperty("fn", "fetchsomethingwithnostr");
-    expect(queryNode.attributes).toHaveProperty("args", "TODO");
+    expect(queryNode.attributes).toHaveProperty("id", "q");
+    expect(queryNode.attributes).toHaveProperty("kind", "30078");
+    expect(queryNode.attributes).toHaveProperty("d", "test");
     
     // Check that the content is preserved
     const paragraph = queryNode.children[0] as any;
     expect(paragraph).toHaveProperty("type", "paragraph");
-    expect(paragraph.children[0]).toHaveProperty("value", "normal text ");
-    expect(paragraph.children[1]).toHaveProperty("value", "{result.content}");
-    expect(paragraph.children[2]).toHaveProperty("value", " normal text");
+    expect(paragraph.children[0]).toHaveProperty("value", "{q.content}");
   });
 
   test("renders query directive", async () => {
-    const input = `:::query{fetchsomethingwithnostr(TODO)}
-normal text {result.content} normal text
+    const input = `:::query{#q kind="30078" d="test"}
+{q.content}
 :::`;
     const result = await renderMarkdownToReact(input, mockRelayHandler);
     
     expect(result).toHaveLength(1); // One QueryComponent
     const queryComponent = result[0] as any;
     expect(queryComponent.type).toBe(QueryComponent);
-    expect(queryComponent.props).toHaveProperty("fn", "fetchsomethingwithnostr");
-    expect(queryComponent.props).toHaveProperty("args", "TODO");
+    expect(queryComponent.props).toHaveProperty("id", "q");
+    expect(queryComponent.props).toHaveProperty("kind", "30078");
+    expect(queryComponent.props).toHaveProperty("d", "test");
     expect(queryComponent.props).toHaveProperty("relayHandler", mockRelayHandler);
-    expect(queryComponent.props.children).toContain("normal text {result.content} normal text");
+    
+    // Check that the children contain the correct structure
+    const children = queryComponent.props.children;
+    expect(children).toHaveLength(1);
+    expect(children[0].type).toBe("p");
+    expect(children[0].props.children).toEqual(["{q.content}"]);
+  });
+
+  test("processes query directive with ID and kind", async () => {
+    const input = `:::query{#q kind="30078" d="test"}
+## {q.content}
+:::`;
+    const result = await processMarkdown(input);
+    
+    const queryNode = result.children[0] as any;
+    expect(queryNode).toHaveProperty("type", "containerDirective");
+    expect(queryNode).toHaveProperty("name", "query");
+    expect(queryNode.attributes).toHaveProperty("id", "q");
+    expect(queryNode.attributes).toHaveProperty("kind", "30078");
+    expect(queryNode.attributes).toHaveProperty("d", "test");
+    
+    // Check that the content is preserved
+    const heading = queryNode.children[0] as any;
+    expect(heading).toHaveProperty("type", "heading");
+    expect(heading.children[0]).toHaveProperty("value", "{q.content}");
+  });
+
+  test("renders query directive with ID and kind", async () => {
+    const input = `:::query{#q kind="30078" d="test"}
+## {q.content}
+:::`;
+    const result = await renderMarkdownToReact(input, mockRelayHandler);
+    
+    expect(result).toHaveLength(1); // One QueryComponent
+    const queryComponent = result[0] as any;
+    expect(queryComponent.type).toBe(QueryComponent);
+    expect(queryComponent.props).toHaveProperty("id", "q");
+    expect(queryComponent.props).toHaveProperty("kind", "30078");
+    expect(queryComponent.props).toHaveProperty("d", "test");
+    expect(queryComponent.props).toHaveProperty("relayHandler", mockRelayHandler);
+    
+    // Check that the children contain the correct structure
+    const children = queryComponent.props.children;
+    expect(children).toHaveLength(1);
+    expect(children[0].type).toBe("h2");
+    expect(children[0].props.children).toEqual(["{q.content}"]);
+  });
+
+  test("processes multiple query directives with different IDs", async () => {
+    // Test that multiple query directives are processed correctly as siblings
+    // Each directive should have its own ID and content
+    const input = `:::query{#q1 kind="30078" d="test1"}
+{q1.content}
+:::
+
+:::query{#q2 kind="30078" d="test2"}
+{q2.content}
+:::`;
+    const result = await processMarkdown(input);
+    
+    // Both directives should be siblings at the root level
+    expect(result.children).toHaveLength(2);
+    
+    // Verify first query directive
+    const query1 = result.children[0] as any;
+    expect(query1.type).toBe("containerDirective");
+    expect(query1.name).toBe("query");
+    expect(query1.attributes).toHaveProperty("id", "q1");
+    expect(query1.attributes).toHaveProperty("d", "test1");
+    
+    // Verify second query directive
+    const query2 = result.children[1] as any;
+    expect(query2.type).toBe("containerDirective");
+    expect(query2.name).toBe("query");
+    expect(query2.attributes).toHaveProperty("id", "q2");
+    expect(query2.attributes).toHaveProperty("d", "test2");
+  });
+
+  test("processes query directive with button using query content", async () => {
+    const input = `:::query{#q kind="30078" d="test"}
+{q.content}
+
+:button[Click me]{fn="plusone" args='{"a": {q.content}}' target="#q"}
+:::`;
+    const result = await processMarkdown(input);
+    
+    const queryNode = result.children[0] as any;
+    expect(queryNode).toHaveProperty("type", "containerDirective");
+    expect(queryNode).toHaveProperty("name", "query");
+    expect(queryNode.attributes).toHaveProperty("id", "q");
+    
+    // Find the button node in the query's children
+    const buttonNode = queryNode.children[1] as any;
+    expect(buttonNode).toHaveProperty("type", "textDirective");
+    expect(buttonNode).toHaveProperty("name", "button");
+    expect(buttonNode.attributes).toHaveProperty("fn", "plusone");
+    expect(buttonNode.attributes).toHaveProperty("args", '{"a": {q.content}}');
+    expect(buttonNode.attributes).toHaveProperty("target", "#q");
+  });
+
+  test("renders query directive with button using query content", async () => {
+    const input = `:::query{#q kind="30078" d="test"}
+{q.content}
+
+:button[Click me]{fn="plusone" args='{"a": {q.content}}' target="#q"}
+:::`;
+    const result = await renderMarkdownToReact(input, mockRelayHandler);
+    
+    expect(result).toHaveLength(1); // One QueryComponent
+    const queryComponent = result[0] as any;
+    expect(queryComponent.type).toBe(QueryComponent);
+    expect(queryComponent.props).toHaveProperty("id", "q");
+    
+    // Check that the button is rendered with the correct props
+    const children = queryComponent.props.children;
+    expect(children).toHaveLength(2); // Paragraph with content and button
+    const button = children[1].props.children[0];
+    expect(button.type).toBe(Button);
+    expect(button.props).toHaveProperty("slotId"); // Button should have a slot ID
+    expect(button.props).toHaveProperty("args", '{"a": {q.content}}');
+    expect(button.props).toHaveProperty("target", "#q");
+  });
+
+  test("hydrates button args with query content", async () => {
+    const { setQueryResponse, registerSlot, getSlotValue } = useNostrStore.getState();
+    
+    // Set up a query response
+    setQueryResponse("q", { content: "42" });
+    
+    // Register a slot for the button
+    const slotId = "button-1";
+    registerSlot(slotId, "q", "content");
+    
+    // Verify the slot value
+    expect(getSlotValue(slotId)).toBe("42");
   });
 }); 

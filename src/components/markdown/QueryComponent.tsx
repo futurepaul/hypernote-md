@@ -1,70 +1,94 @@
 import React, { useEffect, useState } from "react";
-import type { RelayHandler } from "@/stores/nostrStore";
+import type { IRelayHandler } from "@/stores/nostrStore";
+import { useNostrStore } from "@/stores/nostrStore";
 
 interface QueryComponentProps {
-  fn: string;
-  args: string;
+  id: string;
+  kind: string;
+  d: string;
   children: React.ReactNode;
-  relayHandler: RelayHandler;
+  relayHandler: IRelayHandler;
 }
 
-export function QueryComponent({ fn, args, children, relayHandler }: QueryComponentProps) {
-  const [data, setData] = useState<Record<string, any> | null>(null);
+export function QueryComponent({ id, kind, d, children, relayHandler }: QueryComponentProps) {
   const [error, setError] = useState<string | null>(null);
+  const { queryResponses, setQueryResponse } = useNostrStore();
 
   useEffect(() => {
-    async function fetchData() {
+    async function setupQuery() {
       try {
-        // For now, simulate a delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setData({ content: "Mock content from query" });
+        const kindNum = parseInt(kind);
+        if (isNaN(kindNum)) {
+          throw new Error(`Invalid kind: ${kind}`);
+        }
+
+        // Subscribe to query events
+        relayHandler.subscribeToQuery(id, kindNum, d, (event) => {
+          setQueryResponse(id, event);
+        });
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to fetch data");
+        setError(err instanceof Error ? err.message : "Failed to setup query");
       }
     }
 
-    fetchData();
-  }, [fn, args]);
+    setupQuery();
+
+    // Cleanup function
+    return () => {
+      // The cleanup is handled by the RelayHandler when we call subscribeToQuery
+      // with the same ID, which will close the old subscription
+    };
+  }, [id, kind, d, relayHandler, setQueryResponse]);
 
   if (error) {
     return <div className="text-red-500">Error: {error}</div>;
   }
 
+  const data = queryResponses[id];
   if (!data) {
     return <div>Loading...</div>;
   }
 
-  // Process children, replacing {result.x} with actual values
+  // Helper function to replace query content in a string
+  const replaceQueryContent = (text: string) => {
+    return text.replace(new RegExp(`\\{${id}\\.(\\w+)\\}`, 'g'), (_, field) => {
+      return data[field] || `{${id}.${field}}`;
+    });
+  };
+
+  // Process children, replacing {id.x} with actual values
   const processedChildren = React.Children.map(children, child => {
-    console.log("Processing child:", child);
-    
     if (typeof child === "string") {
-      return child.split(/(\{result\.\w+\})/).map((part, i) => {
-        const match = part.match(/\{result\.(\w+)\}/);
-        if (match && match[1]) {
-          return data[match[1]] || part;
-        }
-        return part;
-      });
+      return replaceQueryContent(child);
     }
     
-    // If it's a React element, process its children
+    // If it's a React element, process its children and props
     if (React.isValidElement(child)) {
-      const element = child as React.ReactElement<{ children?: React.ReactNode }>;
-      return React.cloneElement(element, {
-        children: React.Children.map(element.props.children, grandChild => {
+      const element = child as React.ReactElement<any>;
+      const newProps = { ...element.props };
+
+      // Handle button targets
+      if (element.type === 'button' && element.props.target === `#${id}`) {
+        try {
+          const rawArgs = element.props.args || "{}";
+          const processedArgs = replaceQueryContent(rawArgs);
+          newProps.args = processedArgs;
+        } catch (error) {
+          console.error("Error processing button args:", error);
+        }
+      }
+
+      // Process children
+      if (element.props.children) {
+        newProps.children = React.Children.map(element.props.children, grandChild => {
           if (typeof grandChild === "string") {
-            return grandChild.split(/(\{result\.\w+\})/).map((part, i) => {
-              const match = part.match(/\{result\.(\w+)\}/);
-              if (match && match[1]) {
-                return data[match[1]] || part;
-              }
-              return part;
-            });
+            return replaceQueryContent(grandChild);
           }
           return grandChild;
-        }),
-      });
+        });
+      }
+
+      return React.cloneElement(element, newProps);
     }
     
     return child;
