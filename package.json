@@ -25,6 +25,7 @@
     "react": "^19",
     "react-dom": "^19",
     "react-hook-form": "^7.54.2",
+    "react-resizable-panels": "^2.1.7",
     "remark": "^15.0.1",
     "remark-directive": "^4.0.0",
     "remark-parse": "^11.0.0",

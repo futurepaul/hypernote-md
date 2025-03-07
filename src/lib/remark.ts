@@ -1,5 +1,4 @@
-import path from "path";
-import { createElement, Fragment } from "react";
+import { createElement } from "react";
 import type { ReactNode } from "react";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
@@ -8,11 +7,11 @@ import { visit } from "unist-util-visit";
 import type { Root } from "mdast";
 import { Button } from "@/components/ui/button";
 import { QueryComponent } from "@/components/markdown/QueryComponent";
+import { PreComponent } from "@/components/markdown/PreComponent";
 import type { VariantProps } from "class-variance-authority";
 import { toast } from "sonner";
 import type { RelayHandler } from "@/lib/relayHandler";
 import { useNostrStore } from "@/stores/nostrStore";
-import { v4 as uuidv4 } from 'uuid';
 import React from "react";
 
 type ButtonVariant = VariantProps<typeof Button>["variant"];
@@ -23,10 +22,6 @@ interface ButtonDirectiveNode {
   name: string;
   attributes: Record<string, string>;
   children: Array<{ value: string }>;
-}
-
-interface ButtonProps extends React.ComponentProps<typeof Button> {
-  slotId?: string;
 }
 
 // Custom plugin to handle button directives
@@ -61,13 +56,16 @@ function remarkQueries() {
     visit(tree, (node: any) => {
       if (node.type === "containerDirective" && node.name === "query") {
         // Extract ID from the directive label (e.g., #q from :::query{#q})
-        const id = node.label?.replace(/^#/, "") || "";
+        const id = node.attributes?.id || "";
         
         // Store the ID in the attributes for consistency
         if (!node.attributes) {
           node.attributes = {};
         }
         node.attributes.id = id;
+        
+        // Add debug logging
+        console.log("Query directive found:", { id, attributes: node.attributes });
         
         // Set up the node for React rendering
         const data = node.data || (node.data = {});
@@ -88,6 +86,72 @@ function remarkQueries() {
       }
     });
   };
+}
+
+// Utility function to process query references in text
+export function processQueryReferences(text: string): string {
+  const queryRegex = /\{([^.]+)\.([^}]+)\}/g;
+  let processedText = text;
+  let match;
+  
+  // Process all query references in the text
+  while ((match = queryRegex.exec(text)) !== null) {
+    if (match.length >= 3) {
+      const [fullMatch, queryId, field] = match;
+      
+      if (queryId && field) {
+        const event = useNostrStore.getState().queryResponses[queryId];
+        
+        if (event && field in event) {
+          // Replace with the actual value
+          const value = String(event[field as keyof typeof event]);
+          processedText = processedText.replace(fullMatch, value);
+        }
+      }
+    }
+  }
+  
+  return processedText;
+}
+
+// Higher-order component to create reactive elements that update with query data
+export function createReactiveElement(
+  renderFn: () => ReactNode
+): ReactNode {
+  return createElement(
+    ({ children }: { children: ReactNode }) => {
+      // Re-render when queryResponses change
+      useNostrStore(state => Object.keys(state.queryResponses).length);
+      return renderFn();
+    },
+    { children: null}
+  );
+}
+
+// Process args object with query references
+export function processQueryArgs(rawArgs: string, targetId: string): any {
+  if (!targetId) return JSON.parse(rawArgs);
+  
+  const queryId = targetId.replace("#", "");
+  const event = useNostrStore.getState().queryResponses[queryId];
+  
+  if (!event) return JSON.parse(rawArgs);
+  
+  // Process the args by finding all query patterns and replacing them
+  const regex = new RegExp(`\\{${queryId}\\.([^}]+)\\}`, 'g');
+  let processedArgs = rawArgs;
+  
+  processedArgs = processedArgs.replace(regex, (match: string, field: string) => {
+    if (field && field in event) {
+      const value = event[field as keyof typeof event];
+      return typeof value === 'number' ? 
+        String(value) : 
+        JSON.stringify(value).replace(/^"|"$/g, '');
+    }
+    return match;
+  });
+  
+  return JSON.parse(processedArgs);
 }
 
 function processNode(node: any, relayHandler: RelayHandler, index: number): ReactNode {
@@ -128,83 +192,130 @@ function processNode(node: any, relayHandler: RelayHandler, index: number): Reac
           const rawArgs = node.attributes?.args || "{}";
           const target = node.attributes?.target;
 
-          const buttonText = node.children?.[0]?.value || 'Button';
-
-          // Generate a unique slot ID for this button
-          const slotId = uuidv4();
-
-          // If this button has a target, register a slot for it
-          if (target) {
-            const queryId = target.replace("#", "");
-            const field = "content"; // For now, we only support content field
-            useNostrStore.getState().registerSlot(slotId, queryId, field);
-          }
-
-          return createElement(
-            Button,
-            {
-              key: index,
-              variant,
-              size,
-              slotId,
-              onClick: async () => {
-                if (fn) {
-                  try {
-                    // Get the slot value if this button has a target
-                    let args = {};
+          // Get the original button text from children
+          const buttonTextNode = node.children?.[0]; 
+          const buttonText = buttonTextNode?.value || "Button";
+          
+          // Create a function to render the button with query data
+          const renderButton = () => {
+            // Process query references in the button text
+            const processedText = processQueryReferences(buttonText);
+            
+            return React.createElement(
+              Button,
+              {
+                key: index,
+                variant: variant,
+                size: size,
+                onClick: async () => {
+                  if (fn) {
                     try {
-                      if (target) {
-                        const slotValue = useNostrStore.getState().getSlotValue(slotId);
-                        const processedArgs = rawArgs.replace(new RegExp(`\\{${target.replace("#", "")}\\.(\\w+)\\}`, 'g'), (_: string, field: string) => {
-                          // Convert to number if it looks like one
-                          const value = slotValue;
-                          return /^\d+$/.test(value) ? value : JSON.stringify(value);
-                        });
-                        args = JSON.parse(processedArgs);
-                      } else {
-                        args = JSON.parse(rawArgs);
+                      let args;
+                      
+                      try {
+                        args = processQueryArgs(rawArgs, target || "");
+                      } catch (error) {
+                        console.error("Failed to parse button args:", error);
+                        toast.error("Failed to parse button arguments");
+                        return;
                       }
+
+                      toast.success(`Calling ${fn} with args: ${JSON.stringify(args)}`);
+                      await relayHandler.callHypernoteFunction(fn, args, target);
                     } catch (error) {
-                      console.error("Failed to parse button args:", error);
+                      console.error("Error calling function:", error);
+                      toast.error(`Error calling ${fn}: ${error}`);
                     }
+                  } else if (node.attributes?.kind) {
+                    try {
+                      const kind = parseInt(node.attributes.kind);
+                      const tags: string[][] = [];
+                      const content = node.attributes.content || '';
+                      
+                      Object.entries(node.attributes).forEach(([key, value]) => {
+                        if (key.startsWith('d')) {
+                          tags.push([key, String(value)]);
+                        }
+                      });
 
-                    // TODO: This is a fragile implementation. We should:
-                    // 1. Add proper type checking and validation
-                    // 2. Add support for more field types beyond just content
-                    // 3. Add proper error handling for missing or invalid values
-                    // 4. Consider using a schema validation library
-                    // 5. Add proper documentation for supported field types and formats
-                    toast.success(`Calling ${fn} with args: ${JSON.stringify(args)}`);
-                    await relayHandler.callHypernoteFunction(fn, args, target);
-                  } catch (error) {
-                    console.error("Error publishing event:", error);
-                    toast.error(`Error calling ${fn}: ${error}`);
+                      toast.success(`Publishing event kind ${kind}`);
+                      await relayHandler.publish(kind, tags, content);
+                    } catch (error) {
+                      console.error("Error publishing event:", error);
+                      toast.error(`Error publishing event: ${error}`);
+                    }
+                  } else {
+                    toast.error("No function or kind provided");
                   }
-                } else if (node.attributes?.kind) {
-                  try {
-                    const kind = parseInt(node.attributes.kind);
-                    const tags: string[][] = [];
-                    const content = node.attributes.content || '';
-                    
-                    // Parse tags from attributes that start with 'd'
-                    Object.entries(node.attributes).forEach(([key, value]) => {
-                      if (key.startsWith('d')) {
-                        tags.push([key, String(value)]);
-                      }
-                    });
-
-                    toast.success(`Publishing event kind ${kind}`);
-                    await relayHandler.publish(kind, tags, content);
-                  } catch (error) {
-                    console.error("Error publishing event:", error);
-                    toast.error(`Error publishing event: ${error}`);
-                  }
-                } else {
-                  toast.error("No function or kind provided");
                 }
               },
-            } as ButtonProps,
-            buttonText
+              processedText
+            );
+          };
+
+          // Create a component that will re-render when store changes
+          return createReactiveElement(renderButton);
+        }
+        if (node.name === "pre") {
+          const children = (node.children || []).map((child: any, i: number) => {
+            if (child.type === "text") {
+              return child.value || '';
+            }
+            return processNode(child, relayHandler, i);
+          });
+
+          // Check if we're inside a query and the content matches either {queryId} or {queryId.field} format
+          const content = children.join('');
+          const fullQueryMatch = content.match(/\{([^}]+)\}/);
+          
+          if (fullQueryMatch) {
+            const [_, queryPart] = fullQueryMatch;
+            const fieldMatch = queryPart.match(/([^.]+)\.(.+)/);
+            
+            // Create a rendering function that will be called when the component renders
+            const renderPre = () => {
+              if (fieldMatch) {
+                // We have a field access like {q.content}
+                const [_, queryId, field] = fieldMatch;
+                
+                return createElement(
+                  PreComponent,
+                  { 
+                    key: index,
+                    children: content,
+                    queryId: queryId,
+                    field: field
+                  },
+                  null
+                );
+              } else {
+                // We have a full event access like {q}
+                const queryId = queryPart;
+                
+                return createElement(
+                  PreComponent,
+                  { 
+                    key: index,
+                    children: content,
+                    queryId: queryId
+                  },
+                  null
+                );
+              }
+            };
+            
+            // Create a component that will re-render when store changes
+            return createReactiveElement(renderPre);
+          }
+          
+          // No query reference, just render the content
+          return createElement(
+            PreComponent,
+            { 
+              key: index,
+              children: content
+            },
+            null
           );
         }
         if (node.name === "query") {
@@ -239,6 +350,8 @@ function processNode(node: any, relayHandler: RelayHandler, index: number): Reac
               id,
               kind,
               d,
+              authors: node.attributes?.authors,
+              limit: node.attributes?.limit,
               relayHandler,
               children,
               "data-target": id ? `#${id}` : "",

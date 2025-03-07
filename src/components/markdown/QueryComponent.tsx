@@ -54,7 +54,9 @@ export function QueryComponent({
 
       // Add authors if provided
       if (authors) {
+        console.log(`Adding authors to filter:`, authors);
         filter.authors = authors.split(",").map(a => a.trim());
+        console.log(`Filter authors array:`, filter.authors);
       }
 
       // Add limit if provided
@@ -62,10 +64,11 @@ export function QueryComponent({
         const limitNum = parseInt(limit, 10);
         if (!isNaN(limitNum)) {
           filter.limit = limitNum;
+          console.log(`Setting limit to:`, limitNum);
         }
       }
 
-      console.log(`Setting up query ${id} with filter:`, filter);
+      console.log(`Final filter for query ${id}:`, JSON.stringify(filter, null, 2));
 
       // Subscribe to query events using the new sub method
       const subscription = relayHandler.sub(
@@ -73,17 +76,12 @@ export function QueryComponent({
         filter,
         (event: Event) => {
           console.log(`Received event for query ${id}:`, event);
-          // Process the event for the query component
-          const queryData = {
-            id: event.id,
-            pubkey: event.pubkey,
-            created_at: event.created_at,
-            kind: event.kind,
-            content: event.content,
-            tags: event.tags,
-            // Add any other fields needed
-          };
-          setQueryResponse(id, queryData);
+          // Store the entire event in the query response
+          setQueryResponse(id, event);
+          console.log(`Stored event in query responses for ${id}`, {
+            event,
+            queryResponses: useNostrStore.getState().queryResponses
+          });
           setLoading(false);
         }
       );

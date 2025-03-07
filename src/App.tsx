@@ -1,5 +1,4 @@
 import "./index.css";
-import { Card, CardContent } from "@/components/ui/card";
 import { useState, useEffect } from "react";
 import { renderMarkdownToReact } from "@/lib/remark";
 import { Toaster } from "sonner";
@@ -11,6 +10,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 
 const TEMPLATES = {
   blank: "",
@@ -24,11 +28,14 @@ Hello, nerds.
 :button[+1]{fn="plusone" args='{"a": {q.content}}' target="#q"}
 
 :button[-1]{fn="minusone" args='{"a": {q.content}}' target="#q"}
+
+:pre[{q}]
 :::
 
 ## NIP-78
 
 :button[Publish 42]{kind="30078" d="test" content="42"}
+
 `,
   prompt: `
 
@@ -38,16 +45,22 @@ Hello, nerds.
 
 :::query{#q kind="3" authors="0d6c8388dcb049b8dd4fc8d3d8c3bb93de3da90ba828e4f09c8ad0f346488a33" limit="10"}
 
-# {q.content}
+::pre[{q.tags}]
 
 :::
+  
   `,
 } as const;
 
 type TemplateKey = keyof typeof TEMPLATES;
 
 export function App() {
-  const [markdown, setMarkdown] = useState<string>(TEMPLATES.blank);
+  const [markdownStates, setMarkdownStates] = useState<Record<TemplateKey, string>>(() => ({
+    blank: TEMPLATES.blank,
+    counter: TEMPLATES.counter,
+    feed: TEMPLATES.feed,
+    prompt: TEMPLATES.prompt,
+  }));
   const [template, setTemplate] = useState<TemplateKey>("blank");
   const [renderedContent, setRenderedContent] = useState<React.ReactNode[]>([]);
 
@@ -62,19 +75,18 @@ export function App() {
 
   useEffect(() => {
     if (relayHandler) {
-      renderMarkdownToReact(markdown, relayHandler).then(setRenderedContent);
+      renderMarkdownToReact(markdownStates[template], relayHandler).then(setRenderedContent);
     }
-  }, [markdown, relayHandler]);
+  }, [markdownStates, template, relayHandler]);
 
   return (
     <>
-      <div className="p-4 h-screen flex flex-col">
+      <div className="h-screen p-4 flex flex-col">
         <div className="mb-4">
           <Select
             value={template}
             onValueChange={(value: TemplateKey) => {
               setTemplate(value);
-              setMarkdown(TEMPLATES[value]);
             }}
           >
             <SelectTrigger className="w-[180px]">
@@ -88,41 +100,46 @@ export function App() {
             </SelectContent>
           </Select>
         </div>
-        <div className="grid grid-cols-2 gap-4 flex-1">
-          {/* Markdown Input */}
-          <Card className="h-full">
-            <CardContent className="p-4 h-full">
-              <textarea
-                className="w-full h-full p-4 resize-none bg-transparent border-none focus:outline-none font-mono"
-                placeholder="Enter your markdown here..."
-                value={markdown}
-                onChange={(e) => setMarkdown(e.target.value)}
-              />
-            </CardContent>
-          </Card>
-
-          {/* Markdown Preview */}
-          <Card className="h-full">
-            <CardContent className="p-4 h-full overflow-auto">
-              <div className="prose prose-slate max-w-none dark:prose-invert">
-                {renderedContent}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Log Display */}
-        <Card className="mt-4 bg-black">
-          <CardContent className="p-4">
-            <div className="text-white font-mono text-sm overflow-auto min-h-32 max-h-64">
+        <ResizablePanelGroup
+          direction="vertical"
+          className="flex-1 rounded-lg border"
+        >
+          <ResizablePanel defaultSize={75}>
+            <ResizablePanelGroup direction="horizontal">
+              <ResizablePanel defaultSize={50}>
+                <div className="h-full">
+                  <textarea
+                    className="w-full h-full p-4 resize-none bg-transparent border-none focus:outline-none font-mono"
+                    placeholder="Enter your markdown here..."
+                    value={markdownStates[template]}
+                    onChange={(e) => setMarkdownStates(prev => ({
+                      ...prev,
+                      [template]: e.target.value
+                    }))}
+                  />
+                </div>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize={50}>
+                <div className="h-full p-4 overflow-auto">
+                  <div className="prose prose-slate max-w-none dark:prose-invert">
+                    {renderedContent}
+                  </div>
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel defaultSize={25}>
+            <div className="h-full bg-black text-white font-mono text-sm p-4 overflow-auto">
               {logs.map((log, index) => (
                 <div key={index} className="py-1">
                   {log}
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
       <Toaster />
     </>
