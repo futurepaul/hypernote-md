@@ -41,15 +41,13 @@ Hello, nerds.
 
   
   `,
-  feed: `# Hypernote
+  feed: `# Nested Query Example
 
-:::query{#q kind="3" authors="0d6c8388dcb049b8dd4fc8d3d8c3bb93de3da90ba828e4f09c8ad0f346488a33" limit="10"}
+:::query{#q1 kind="3" authors="0d6c8388dcb049b8dd4fc8d3d8c3bb93de3da90ba828e4f09c8ad0f346488a33" limit="1"}
 
-::pre[{q.tags}]
+::pre[{q1.tags}]
 
-:::
-  
-  `,
+:::`,
 } as const;
 
 type TemplateKey = keyof typeof TEMPLATES;
