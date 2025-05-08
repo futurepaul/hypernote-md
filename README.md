@@ -1,4 +1,10 @@
-# bun-react-tailwind-shadcn-template
+# Hypernote Md
+
+An experiment to get away from the original web-components / HTML markup of [Hypernote](https://github.com/futurepaul/hypernote).
+
+Result: live editing of hypernotes with a live preview, including queries. Expressive enough to make a counter that used DVMCP to increment / decrement a number (showing that hypernote concepts are expressive enough to make a simple stateful UI with no scripting).
+
+# Installation
 
 To install dependencies:
 
